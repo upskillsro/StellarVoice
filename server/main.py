@@ -47,9 +47,9 @@ SAMPLE_RATE_IN  = 16000   # Parakeet expects 16 kHz mono
 SAMPLE_RATE_OUT = 24000   # Kokoro output rate
 
 SYSTEM_PROMPT = (
-    "You are a helpful, conversational voice assistant. "
+    "You are a helpful, conversational voice assistant name Gideon. "
     "Respond in plain natural language with no markdown, bullets, or emojis. "
-    "Keep answers short — two to four sentences max."
+    "Respond immediately and keep answers short"
 )
 
 # ---------------------------------------------------------------------------
@@ -201,15 +201,12 @@ async def query_llm_stream(user_text: str, history: list[dict]):
                                 in_think = False
                                 buffer = buffer.split("</think>")[-1]
                                 
-                            # Yield on sentence boundaries (reduced from 10 to 3 for fast start)
-                            if not in_think and len(buffer) > 3 and (buffer.endswith('. ') or buffer.endswith('! ') or buffer.endswith('? ') or buffer.endswith('\n')):
-                                clean_s = buffer.strip()
-                                if clean_s:
-                                    yield clean_s
-                                buffer = ""
-                                
-                            # Fallback: if buffer is very long and has a comma, yield it anyway to avoid silence
-                            if not in_think and len(buffer) > 40 and buffer.endswith(', '):
+                            # Yield on sentence boundaries (reduced to 3 for fast start)
+                            if not in_think and (
+                                (len(buffer) > 3 and (buffer.endswith('. ') or buffer.endswith('! ') or buffer.endswith('? ') or buffer.endswith('\n'))) or
+                                (len(buffer) > 20 and buffer.endswith(', ')) or  # Yield on first comma if it's long
+                                (len(buffer) > 60) # Absolute max length for a chunk
+                            ):
                                 clean_s = buffer.strip()
                                 if clean_s:
                                     yield clean_s

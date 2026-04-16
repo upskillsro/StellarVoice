@@ -23,13 +23,15 @@ interface UseVoiceAgentReturn {
   disconnect: () => void;
 }
 
+export type InteractionMode = 'manual' | 'toggle' | 'continuous';
+
 const WS_URL = 'ws://localhost:8765/ws';
 // Minimum audio length to send (in ms) — avoids sending silence
 const MIN_RECORD_MS = 500;
 // Maximum recording time before auto-send (ms)
 const MAX_RECORD_MS = 8000;
 
-export function useVoiceAgent(): UseVoiceAgentReturn {
+export function useVoiceAgent(mode: InteractionMode = 'manual'): UseVoiceAgentReturn {
   const [agentState, setAgentState] = useState<AgentState>('idle');
   const [transcript, setTranscript] = useState('');
   const [reply, setReply] = useState('');
@@ -59,6 +61,7 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
   const vadIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [liveTranscript, setLiveTranscript] = useState('');
   const speechRecognitionRef = useRef<any>(null);
+  const continuousInactivityTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ---------------------------------------------------------------
   // WebSocket management
@@ -157,6 +160,14 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
           // Switch back to mic analyser if still listening
           setAnalyserNode(micAnalyserRef.current);
           setAgentState((prev) => (prev === 'speaking' ? 'idle' : prev));
+
+          // CONTINUOUS MODE LOOP
+          if (mode === 'continuous' && isConnected) {
+            // Give a tiny delay so the audio system cleans up
+            setTimeout(() => {
+              startListening();
+            }, 300);
+          }
         }
       };
     } catch (e) {
@@ -167,6 +178,11 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
   }, []);
 
   const playAudio = useCallback((wavBuf: ArrayBuffer) => {
+    // In continuous mode, if AI starts speaking, clear the inactivity timer
+    if (continuousInactivityTimerRef.current) {
+        clearTimeout(continuousInactivityTimerRef.current);
+        continuousInactivityTimerRef.current = null;
+    }
     audioQueueRef.current.push(wavBuf);
     processAudioQueue();
   }, [processAudioQueue]);
@@ -295,9 +311,23 @@ export function useVoiceAgent(): UseVoiceAgentReturn {
 
         if (volume > VAD_VOLUME_THRESHOLD) {
           lastSpeechTime = Date.now();
+          // In continuous mode, reset the inactivity timer on volume detection
+          if (continuousInactivityTimerRef.current) {
+            clearTimeout(continuousInactivityTimerRef.current);
+            continuousInactivityTimerRef.current = null;
+          }
         } else if (Date.now() - lastSpeechTime > SILENCE_THRESHOLD_MS) {
           // It's been quiet too long! Auto-send.
           stopListening();
+
+          // Handle 30s inactivity for Continuous Mode
+          if (mode === 'continuous' && !continuousInactivityTimerRef.current) {
+             continuousInactivityTimerRef.current = setTimeout(() => {
+                console.log("Continuous mode timed out due to 30s inactivity");
+                // We don't call stopListening because it's already idle or transcribing
+                // We just let the loop die by not calling startListening again
+             }, 30000);
+          }
         }
       }, 100);
 

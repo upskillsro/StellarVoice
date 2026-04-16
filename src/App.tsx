@@ -2,10 +2,24 @@ import React, { Suspense, useEffect, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Mic, Square, PhoneOff, Wifi, WifiOff, Sparkles } from 'lucide-react';
+import {
+  Mic,
+  Square,
+  PhoneOff,
+  Wifi,
+  WifiOff,
+  Sparkles,
+  Settings,
+  Zap,
+  MousePointer2,
+  RefreshCcw,
+  X
+} from 'lucide-react';
 import { useVoiceAgent } from './hooks/useVoiceAgent';
 import type { AgentState } from './hooks/useVoiceAgent';
 import { DotSphere } from './components/DotSphere';
+
+type InteractionMode = 'manual' | 'toggle' | 'continuous';
 
 // ─── State label / color helpers ────────────────────────────────────────
 const STATE_LABELS: Record<AgentState, string> = {
@@ -33,6 +47,9 @@ const STATE_SPHERE_COLORS: Record<AgentState, string> = {
 };
 
 function App() {
+  const [interactionMode, setInteractionMode] = useState<InteractionMode>('manual');
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+
   const {
     agentState,
     transcript,
@@ -45,7 +62,7 @@ function App() {
     stopListening,
     connect,
     disconnect,
-  } = useVoiceAgent();
+  } = useVoiceAgent(interactionMode);
 
   const [engines, setEngines] = useState({ asr: 'checking', tts: 'checking', llm: 'checking' });
   const [availableModels, setAvailableModels] = useState<string[]>(['gemma4:e4b']);
@@ -117,16 +134,7 @@ function App() {
 
         {/* Header */}
         <header className="flex justify-between items-center px-8 pt-8 w-full">
-          <motion.div
-            initial={{ opacity: 0, y: -16 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex items-center gap-2"
-          >
-            <Sparkles className="w-5 h-5 text-indigo-400" />
-            <h1 className="text-xl font-medium tracking-wide">
-              Antigravity<span className="font-light text-zinc-500">Voice</span>
-            </h1>
-          </motion.div>
+          <div /> {/* Branding removed */}
 
           {/* Top Right Container */}
           <div className="flex flex-col items-end gap-3 pointer-events-auto">
@@ -143,80 +151,112 @@ function App() {
                 </div>
               ))}
             </div>
-
-            {/* Actions Row */}
-            <div className="flex items-center gap-3">
-              {/* ASR Dropdown */}
-              <select
-                title="ASR Engine"
-                className="bg-zinc-900/40 text-violet-300 text-[10px] tracking-wider uppercase border border-violet-400/10 rounded-full px-3 py-1.5 focus:outline-none backdrop-blur-sm hover:border-violet-400/30 transition-colors cursor-pointer"
-                value={activeAsr.engine === 'whisper' ? `whisper:${activeAsr.model}` : activeAsr.engine}
-                onChange={async (e) => {
-                  const val = e.target.value;
-                  let newAsr = { engine: val, model: 'base' };
-                  if (val.startsWith('whisper:')) {
-                    newAsr = { engine: 'whisper', model: val.split(':')[1] };
-                  }
-                  setActiveAsr(newAsr);
-                  await fetch('http://127.0.0.1:8765/set_asr', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify(newAsr)
-                  });
-                }}
-              >
-                <optgroup label="Whisper (GPU)" className="bg-zinc-900 normal-case">
-                  {asrData.whisper_models.map(m => <option key={m} value={`whisper:${m}`}>Whisper {m}</option>)}
-                </optgroup>
-                <optgroup label="Real-time" className="bg-zinc-900 normal-case">
-                  {asrData.engines.filter(e => e !== 'whisper').map(e => <option key={e} value={e}>{e}</option>)}
-                </optgroup>
-              </select>
-
-              {/* LLM Dropdown */}
-              <select
-                title="Select Ollama Model"
-                className="bg-zinc-900/40 text-emerald-300 text-[10px] tracking-wider uppercase border border-emerald-400/10 rounded-full px-3 py-1.5 focus:outline-none backdrop-blur-sm hover:border-emerald-400/30 transition-colors cursor-pointer"
-                value={activeModel}
-                onChange={async (e) => {
-                  const m = e.target.value;
-                  setActiveModel(m);
-                  await fetch('http://127.0.0.1:8765/set_model', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ model: m })
-                  });
-                }}
-              >
-                {availableModels.map(name => <option key={name} value={name} className="bg-zinc-900 normal-case">{name}</option>)}
-              </select>
-
-              {/* Connection pill */}
-              <AnimatePresence mode="wait">
-                {isConnected ? (
-                  <motion.div
-                    key="connected"
-                    initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                    className="flex items-center gap-2 bg-white/8 backdrop-blur-md px-4 py-1.5 rounded-full border border-white/5 cursor-default"
-                  >
-                    <div className={`w-2 h-2 rounded-full ${STATE_DOT_COLORS[agentState]} transition-colors duration-300 ${agentState !== 'idle' ? 'animate-pulse' : ''}`} />
-                    <span className="text-sm font-medium text-zinc-300">{STATE_LABELS[agentState]}</span>
-                  </motion.div>
-                ) : (
-                  <motion.button
-                    key="disconnected"
-                    initial={{ opacity: 0, scale: 0.8 }} animate={{ opacity: 1, scale: 1 }} exit={{ opacity: 0, scale: 0.8 }}
-                    onClick={connect}
-                    className="flex items-center gap-2 bg-red-500/10 hover:bg-red-500/20 backdrop-blur-md px-4 py-1.5 rounded-full border border-red-500/20 cursor-pointer transition-colors"
-                  >
-                    <WifiOff className="w-4 h-4 text-red-400" />
-                    <span className="text-sm font-medium text-red-400">Connect backend</span>
-                  </motion.button>
-                )}
-              </AnimatePresence>
-            </div>
           </div>
         </header>
+
+        {/* Settings Overlay */}
+        <AnimatePresence>
+          {isSettingsOpen && (
+            <>
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                onClick={() => setIsSettingsOpen(false)}
+                className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[100] pointer-events-auto"
+              />
+              <motion.div
+                initial={{ opacity: 0, y: 100, scale: 0.95 }}
+                animate={{ opacity: 1, y: 0, scale: 1 }}
+                exit={{ opacity: 0, y: 100, scale: 0.95 }}
+                className="fixed bottom-32 left-1/2 -translate-x-1/2 w-[90%] max-w-md bg-zinc-900/90 border border-white/10 rounded-3xl p-6 backdrop-blur-2xl z-[101] shadow-2xl pointer-events-auto"
+              >
+                <div className="flex items-center justify-between mb-6">
+                  <h2 className="text-lg font-medium flex items-center gap-2">
+                    <Settings className="w-5 h-5 text-indigo-400" />
+                    Settings
+                  </h2>
+                  <button onClick={() => setIsSettingsOpen(false)} className="p-2 hover:bg-white/5 rounded-full transition-colors">
+                    <X className="w-5 h-5 text-zinc-400" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  {/* Interaction Mode */}
+                  <div className="space-y-3">
+                    <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold px-1">Interaction Mode</label>
+                    <div className="grid grid-cols-3 gap-2 bg-black/40 p-1 rounded-2xl border border-white/5">
+                      {[
+                        { id: 'manual', icon: MousePointer2, label: 'Push' },
+                        { id: 'toggle', icon: Zap, label: 'Toggle' },
+                        { id: 'continuous', icon: RefreshCcw, label: 'Auto' }
+                      ].map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => setInteractionMode(m.id as InteractionMode)}
+                          className={`flex flex-col items-center gap-1.5 py-3 rounded-xl transition-all ${interactionMode === m.id ? 'bg-white/10 text-white shadow-lg' : 'text-zinc-500 hover:text-zinc-300'}`}
+                        >
+                          <m.icon className={`w-4 h-4 ${interactionMode === m.id ? 'text-indigo-400' : ''}`} />
+                          <span className="text-[10px] font-medium">{m.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Engine Selectors */}
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold px-1">ASR Engine</label>
+                      <select
+                        className="w-full bg-black/40 text-violet-300 text-xs border border-violet-400/10 rounded-xl px-4 py-3 focus:outline-none hover:border-violet-400/30 transition-colors cursor-pointer appearance-none"
+                        value={activeAsr.engine === 'whisper' ? `whisper:${activeAsr.model}` : activeAsr.engine}
+                        onChange={async (e) => {
+                          const val = e.target.value;
+                          let newAsr = { engine: val, model: 'base' };
+                          if (val.startsWith('whisper:')) {
+                            newAsr = { engine: 'whisper', model: val.split(':')[1] };
+                          }
+                          setActiveAsr(newAsr);
+                          await fetch('http://127.0.0.1:8765/set_asr', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(newAsr)
+                          });
+                        }}
+                      >
+                        <optgroup label="Whisper (GPU)" className="bg-zinc-900">
+                          {asrData.whisper_models.map(m => <option key={m} value={`whisper:${m}`}>Whisper {m}</option>)}
+                        </optgroup>
+                        <optgroup label="Real-time" className="bg-zinc-900">
+                          {asrData.engines.filter(e => e !== 'whisper').map(e => <option key={e} value={e}>{e}</option>)}
+                        </optgroup>
+                      </select>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-zinc-500 font-bold px-1">LLM Model</label>
+                      <select
+                        className="w-full bg-black/40 text-emerald-300 text-xs border border-emerald-400/10 rounded-xl px-4 py-3 focus:outline-none hover:border-emerald-400/30 transition-colors cursor-pointer appearance-none"
+                        value={activeModel}
+                        onChange={async (e) => {
+                          const m = e.target.value;
+                          setActiveModel(m);
+                          await fetch('http://127.0.0.1:8765/set_model', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ model: m })
+                          });
+                        }}
+                      >
+                        {availableModels.map(name => <option key={name} value={name} className="bg-zinc-900">{name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
 
         {/* Centre text stack */}
         <div className="flex-1 flex flex-col items-center justify-end pb-8 z-20 pointer-events-none">
@@ -317,8 +357,13 @@ function App() {
             </button>
           )}
 
-          {/* Spacer matching left button */}
-          <div className="w-14 h-14" />
+          {/* Settings button */}
+          <button
+            onClick={() => setIsSettingsOpen(!isSettingsOpen)}
+            className={`w-14 h-14 rounded-full backdrop-blur-md flex items-center justify-center transition-all border ${isSettingsOpen ? 'bg-white text-black border-white' : 'bg-white/8 text-zinc-300 border-white/5 hover:bg-white/15'}`}
+          >
+            <Settings className="w-6 h-6" />
+          </button>
         </div>
 
       </div>
